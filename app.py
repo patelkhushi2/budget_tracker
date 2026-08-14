@@ -8,9 +8,12 @@ conn = sqlite3.connect('budget.db') # connects to a database file called budget.
 st.title("Budget Transactions")
 st.subheader("Transactions")
 
-status_filter = st.selectbox("Filter by Status", [
-    "All", "Pending", "Posted"])
+col1, col2 = st.columns(2)
 
+with col1:
+    status_filter = st.selectbox("Filter by Status", [
+        "All", "Pending", "Posted"])
+    
 if status_filter == "All":
     query = """
     SELECT transaction_date, merchant, amount, status
@@ -35,8 +38,9 @@ if status_filter == "Posted":
     """
     df = pd.read_sql_query(query, conn) 
     
-order_by = st.selectbox("Order by", [
-    "Oldest to Newest", "Newest to Oldest"])
+with col2:
+    order_by = st.selectbox("Order by", [
+        "Oldest to Newest", "Newest to Oldest"])
 
 if order_by == "Oldest to Newest":
     query = """
