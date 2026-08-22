@@ -35,7 +35,7 @@ with order_filter:
 )
 
 with category_filter:
-    merchant_filter = st.selectbox("Filter by Merchant", [
+    category_filter = st.selectbox("Filter by Category", [
         "All",
         "Dining",
         "Groceries",
@@ -50,30 +50,38 @@ with category_filter:
         "Income",
         "Transfer",
 ])
-    
 
 query = """
-    SELECT transaction_date, merchant, amount, status
+    SELECT 
+        transactions.transaction_date,
+        transactions.merchant,
+        categories.category_name AS category,
+        transactions.amount,
+        transactions.status
     FROM transactions
-    WHERE strftime('%Y-%m', transaction_date) = ?
-"""    
+    JOIN categories
+        ON transactions.category_id = categories.category_id
+    WHERE strftime('%Y-%m', transactions.transaction_date) = ?
+"""   
     
 if status_filter == "Pending":
     query += " AND status = 'Pending' "
 elif status_filter == "Posted":
     query += " AND status = 'Posted' "
-    
+
+if category_filter != "All":
+    query += " AND categories.category_name = ?"
+
 if order_by == "Oldest to Newest":
-    query += "ORDER BY transaction_date ASC"
+    query += " ORDER BY transaction_date ASC"
 else:
-    query += "ORDER BY transaction_date DESC"
+    query += " ORDER BY transaction_date DESC"
     
-if merchant_filter != "All":
-    query += " AND merchant = ?"
+if category_filter != "All":
     df = pd.read_sql_query(
         query, 
         conn,
-        params=[selected_month, merchant_filter]
+        params=[selected_month, category_filter]
     ) # executes the query and returns a dataframe
 else:
     df = pd.read_sql_query(
@@ -81,5 +89,21 @@ else:
         conn,
         params=[selected_month]
     ) # executes the query and returns a dataframe
-    
-st.dataframe(df, hide_index=True) # displays the dataframe in the web app without the index
+
+total_col, count_col = st.columns(2)
+
+with total_col:
+    total_amount=df["amount"].sum()
+    st.metric(
+        label="Total",
+        value=f"${total_amount:,.2f}"
+    )
+
+with count_col:
+    transaction_count = len(df)
+    st.metric(
+        label="Transactions",
+        value=transaction_count
+    ) 
+
+st.dataframe(df, hide_index=True, width="stretch") # displays the dataframe in the web app without the index
