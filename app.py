@@ -12,6 +12,19 @@ conn = sqlite3.connect('budget.db') # connects to the budget database
 #title and subtitle for the web app
 st.title("Budget Transactions")
 
+month,top = st.columns([1, 3])
+
+#month dropbox + logic
+with month:
+    month_filter = st.selectbox(
+        "Month",
+        ["August 2026", "July 2026"]
+    )
+    if month_filter == "August 2026":
+        selected_month = "2026-08"
+    elif month_filter == "July 2026":
+        selected_month = "2026-07"
+
 overview, transactions = st.columns(2)
 
 with overview:
@@ -19,22 +32,22 @@ with overview:
 
     #total amount of pending 
     pending_query = """
-        SELECT SUM(amount) AS pending_total
+        SELECT COALESCE(SUM(amount), 0) AS pending_total
         FROM transactions 
-        WHERE status = 'Pending' AND transaction_type = 'Purchase'
+        WHERE status = 'Pending' AND transaction_type = 'Purchase' AND strftime('%Y-%m', transaction_date) = ?
     """
 
-    pending_df = pd.read_sql_query(pending_query, conn) 
-    pending_spending = pending_df["pending_total"].iloc[0] 
+    pending_df = pd.read_sql_query(pending_query, conn, params=[selected_month])
+    pending_spending = pending_df["pending_total"].iloc[0]
 
     #total amount of posted
     posted_query = """
-        SELECT SUM(amount) AS posted_total
+        SELECT COALESCE(SUM(amount), 0) AS posted_total
         FROM transactions 
-        WHERE status = 'Posted' AND transaction_type = 'Purchase'
+        WHERE status = 'Posted' AND transaction_type = 'Purchase' AND strftime('%Y-%m', transaction_date) = ?
     """
 
-    posted_df = pd.read_sql_query(posted_query, conn)
+    posted_df = pd.read_sql_query(posted_query, conn, params=[selected_month])
     posted_spending = posted_df["posted_total"].iloc[0]
 
     #display
@@ -57,37 +70,49 @@ with overview:
             label="Posted Spending",
             value=f"${posted_spending:,.2f}"
         )
+        
+    st.subheader("Income vs Spending")
+    
+    income_query = """
+        SELECT COALESCE(SUM(amount), 0) AS income_total
+        FROM transactions 
+        WHERE transaction_type = 'Income' AND strftime('%Y-%m', transaction_date) = ?
+    """
+    
+    income_df = pd.read_sql_query(income_query, conn, params=[selected_month])
+    income_total = income_df["income_total"].iloc[0]
+    st.metric(
+        label="Total Income",
+        value=f"${income_total:,.2f}"
+    )
 
-
+    
+    
 
 with transactions:
     st.subheader("Transactions")
-
-    #display
-    status_filter, order_filter = st.columns(2)
-
-    with status_filter:
-        status_filter = st.selectbox("Filter by Status", [
-            "All", "Pending", "Posted"])
     
-    with order_filter:
-        order_by = st.selectbox("Order by", [
-            "Oldest to Newest", "Newest to Oldest"])
-
-    query = """
-        SELECT transaction_date, merchant, amount, status
+    number_of_transactions_query = """
+        SELECT COUNT(*) AS transaction_count
         FROM transactions
-    """    
+        WHERE strftime('%Y-%m', transaction_date) = ? AND transaction_type = 'Purchase'
+    """
     
-    if status_filter == "Pending":
-        query += "WHERE status = 'Pending' "
-    elif status_filter == "Posted":
-        query += "WHERE status = 'Posted' "
+    transaction_count_df = pd.read_sql_query(number_of_transactions_query, conn, params=[selected_month])
+    transaction_count = transaction_count_df["transaction_count"].iloc[0]
+
+    st.write(f"Number of Transactions: {transaction_count}")
+
+    st.subheader("Top 5 Merchants by Transaction Count")
     
-    if order_by == "Oldest to Newest":
-        query += "ORDER BY transaction_date ASC"
-    else:
-        query += "ORDER BY transaction_date DESC"
-    
-    df = pd.read_sql_query(query, conn) # executes the query and returns a dataframe
-    st.dataframe(df, hide_index=True) # displays the dataframe in the web app without the index
+    top5_query = """
+        SELECT merchant, COUNT(*) AS transaction_count, SUM(amount) AS total_spent
+        FROM transactions
+        WHERE strftime('%Y-%m', transaction_date) = ? and transaction_type = 'Purchase'
+        GROUP BY merchant
+        ORDER BY transaction_count DESC
+        LIMIT 5
+    """
+    st.dataframe(
+        pd.read_sql_query(top5_query, conn, params=[selected_month]),hide_index=True
+    )    
